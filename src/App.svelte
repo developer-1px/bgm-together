@@ -1,13 +1,17 @@
 <script lang="ts">
-import {set, ref, getDatabase, onValue} from "firebase/database"
-import {onMount} from "svelte"
-import {derived, readable, writable} from "svelte/store"
+import {getDatabase, onDisconnect, onValue, ref, set} from "firebase/database"
+import {derived, readable} from "svelte/store"
 import {app} from "../firebaseConfig"
 
 // Get a reference to the database service
 const db = getDatabase(app)
 
 export const firebase_set = <T>(path:string, value:T) => set(ref(db, path), value)
+
+export const firebase_set_on_disconnect_remove = <T>(path:string, value:T) => {
+  set(ref(db, path), value)
+  onDisconnect(ref(db, path)).remove()
+}
 
 export const createFirebaseReadable = <T>(path:string, initValue:T) => readable<T>(initValue, set => {
   path = path.split("/").filter(Boolean).join("/")
@@ -24,10 +28,10 @@ export const createFirebaseReadable = <T>(path:string, initValue:T) => readable<
 })
 
 const youtube$ = createFirebaseReadable("youtube", "")
+const users$ = createFirebaseReadable("users", {})
+$: count = Object.values($users$ ?? {}).length
 
 let player
-
-// firebase_set("youtube", "gD8vI_t7CXA")
 
 const s = derived([youtube$], ([youtube]) => {
   if (!youtube) return
@@ -61,11 +65,13 @@ const s = derived([youtube$], ([youtube]) => {
 })
 
 let started = false
+const id = Math.random().toString(36).slice(2)
 
 const noop = () => {}
 
 const play = () => {
   started = true
+  firebase_set_on_disconnect_remove(`/users/${id}`, id)
   s.subscribe(noop)
 }
 
@@ -76,7 +82,6 @@ const enter = (e) => {
 </script>
 
 <div class="layer vpack gap(20)">
-
   <div class="hbox gap(3) h(20) hidden .started:visible" class:started>
     <div class="w(5) h(100%) bg(orange) bounce"></div>
     <div class="w(5) h(100%) bg(orange) bounce animation-delay(-2.2s)"></div>
@@ -86,21 +91,35 @@ const enter = (e) => {
   <div class="w(400) h(400) bg(#000) b(5/#fff) r(20) pack">
     <div id="ytplayer"/>
     {#if !started}
-      <button on:click={play} class="c(#fff) font(100) bold">▶</button>
+      <button on:click={play} class="c(#fff) font(100) bold">
+        <div>▶</div>
+        <div class="font(20) c(#555)">click</div>
+      </button>
     {/if}
   </div>
+
+  {#if count}
+    <div class="c(#888) h(20)">지금 <span class="c(#fff)">{count}</span>명이
+      {#if count > 1}함께{/if} 듣고 있어요. 🎶
+    </div>
+  {:else}
+    <div class="c(#888) h(20)">지금은 아무도 듣지 않고 있네요. 무슨 음악일지 궁금하지 않아요?</div>
+  {/if}
 
   <div class="h(40)"/>
 </div>
 
 {#if started}
   <div class="layer(bottom) m(20) vbox gap(8)">
-    <div class="c(#888) text-center">같이 듣고 싶은 유투브 주소를 입력해보세요.</div>
+    <div class="c(#888) text-center">같이 듣고 싶은 유투브 주소를 입력해보세요. 모든 사람들이 같은 BGM을 듣고 있어요.</div>
     <input value={$youtube$} class="bg(#000) c(#555) b(-) r(100) p(10/20) block w(100%) outline(none) text-center" spellcheck="false" on:keydown={enter}/>
   </div>
 {/if}
 
+<div class="layer(bottom+right) m(10) c(#888) font(10)">0.0.2</div>
+
 <style global>
+:root { font-family:Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;}
 html { background:#111}
 #ytplayer {box-shadow:0 0 10px rgba(0, 0, 0, .5);}
 .bounce { animation:bounce 2.2s ease infinite alternate; transform-origin:bottom; }
